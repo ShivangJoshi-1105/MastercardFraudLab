@@ -1,0 +1,11 @@
+{
+  "ks_statistics": {
+    "amount": 0.23765809603908844,
+    "oldbalanceOrg": 0.07605230485802406,
+    "newbalanceOrig": 0.14958588649925908,
+    "oldbalanceDest": 0.29463674956946606,
+    "newbalanceDest": 0.3777494092674917
+  },
+  "discriminative_auc": 0.5570416346870446,
+  "correlation_diff": 0.08834237182068364
+}

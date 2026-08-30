@@ -65,30 +65,30 @@ def artifacts_ready() -> bool:
 
 @st.cache_resource
 def load_demo_backbone():
-    """A lighter-weight AgentContext (reads only the first 200k PaySim rows) for the app's live
-    'generate N more incidents' button - full statistical fidelity isn't needed for a UI demo,
-    only enough real signal to keep amounts/victims realistic, and this keeps the page snappy."""
-    from src.generate.simulate import RAW_PATH, Backbone, DTYPES
-    from src.generate.rule_based_agents import AgentContext, all_agents
+    """A small, committed sample (built by `scripts/build_demo_backbone.py`) rather than the
+    full 493MB raw PaySim CSV - deploying this app (e.g. Streamlit Community Cloud) only has
+    whatever's in the git repo, and the raw CSV can't live there (Kaggle terms + repo size), so
+    the app's live-generation pages run off this small pre-extracted sample of the same real
+    statistics instead."""
+    import json
+
     import numpy as np
     import pandas as pd
 
-    df = pd.read_csv(RAW_PATH, dtype=DTYPES, nrows=200_000)
-    legit_df = df[df["isFraud"] == 0].reset_index(drop=True)
-    rng = np.random.default_rng(123)
-    amount_quantiles = np.quantile(df["amount"].to_numpy(dtype=float), np.linspace(0, 1, 200))
-    victim_pool = legit_df[legit_df["oldbalanceOrg"] > 1000][["nameOrig", "oldbalanceOrg"]].sample(
-        n=min(5000, (legit_df["oldbalanceOrg"] > 1000).sum()), random_state=123
-    ).rename(columns={"nameOrig": "account", "oldbalanceOrg": "balance"}).reset_index(drop=True)
+    from src.generate.simulate import Backbone
+    from src.generate.rule_based_agents import AgentContext
 
+    legit_df = pd.read_parquet(PROCESSED_DIR / "demo_legit_sample.parquet")
+    victim_balances = pd.read_parquet(PROCESSED_DIR / "demo_victim_balances.parquet")
+    with open(PROCESSED_DIR / "demo_backbone_meta.json") as f:
+        meta = json.load(f)
+
+    rng = np.random.default_rng(123)
     ctx = AgentContext(
         rng=rng,
         real_accounts=legit_df["nameOrig"].astype(str).unique(),
-        amount_quantiles=amount_quantiles,
-        max_step=int(df["step"].max()),
-        victim_balances=victim_pool,
+        amount_quantiles=np.array(meta["amount_quantiles"]),
+        max_step=meta["max_step"],
+        victim_balances=victim_balances,
     )
-    registry = all_agents()
-    tabular_types = [name for name, cls in registry.items() if not cls.is_graph]
-    graph_types = [name for name, cls in registry.items() if cls.is_graph]
-    return Backbone(legit_df, df[df["isFraud"] == 1], ctx, tabular_types, graph_types)
+    return Backbone(legit_df, legit_df.iloc[0:0], ctx, meta["tabular_attack_types"], meta["graph_attack_types"])

@@ -1,0 +1,9 @@
+{
+  "degree_ks": 0.9035169623404918,
+  "real_avg_clustering": 0.1111111111111111,
+  "synth_avg_clustering": 0.49814959114959106,
+  "real_cycle_rate": 0.1111111111111111,
+  "synth_cycle_rate": 1.0,
+  "discriminative_win_rate": 0.0,
+  "note": "Graph GENERATOR did not converge to realistic topology within the project timeline (see sweep in scripts/experiment_graph_gan.py); synthetic graph-attack training data below is sourced from the rule-based agents at scale instead. The discriminator/critic trained normally and is reported above as a genuine fidelity scorer."
+}

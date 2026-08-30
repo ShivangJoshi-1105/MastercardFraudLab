@@ -3,12 +3,16 @@ __pycache__/
 *.pyc
 data/raw/*
 !data/raw/.gitkeep
+# Only the small artifacts the deployed Streamlit app actually reads are committed - see
+# scripts/build_demo_backbone.py's docstring for why the app can't depend on the raw CSV or the
+# large intermediate parquet files (legit_transactions/train_set/rule_based_attacks/etc.) at
+# deploy time. Those stay local-only; regenerate them with scripts/run_pipeline.py.
 data/processed/*
 !data/processed/.gitkeep
-models/*
-!models/.gitkeep
-*.pt
-*.pth
+!data/processed/test_set.parquet
+!data/processed/demo_legit_sample.parquet
+!data/processed/demo_victim_balances.parquet
+!data/processed/demo_backbone_meta.json
 .streamlit/
 .pytest_cache/
 .vscode/
