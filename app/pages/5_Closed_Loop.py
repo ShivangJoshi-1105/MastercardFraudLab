@@ -33,6 +33,24 @@ st.markdown(
 """
 )
 
+if "holdout_detection_rate_before" in result:
+    st.subheader("The headline number: detection rate on a fresh, held-out Red-Team batch")
+    st.markdown(
+        "Aggregate test-set recall is usually already high enough that one retraining round can't "
+        "move it much (a ceiling effect, not a failure of the loop). This number has no such "
+        "ceiling: it's a *second*, disjoint batch from the same Red-Team GAN — fraud specifically "
+        "crafted to evade the **before** model — so it directly tests whether retraining actually "
+        "closed that gap."
+    )
+    c1, c2 = st.columns(2)
+    c1.metric("Detected before retraining", f"{result['holdout_detection_rate_before']:.1%}")
+    c2.metric(
+        "Detected after retraining", f"{result['holdout_detection_rate_after']:.1%}",
+        delta=f"{(result['holdout_detection_rate_after'] - result['holdout_detection_rate_before']):+.1%}",
+    )
+    st.divider()
+
+st.subheader("Aggregate held-out test-set metrics (for reference)")
 before, after = result["metrics_before"], result["metrics_after"]
 metric_names = ["precision", "recall", "f1", "roc_auc", "pr_auc"]
 comparison = pd.DataFrame(

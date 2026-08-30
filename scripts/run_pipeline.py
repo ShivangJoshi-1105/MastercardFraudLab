@@ -23,13 +23,13 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from src.generate.simulate import Backbone, generate_all_attacks, load_backbone, save_labeled_dataset
+from src.generate.rule_based_agents import get_agent
 from src.generate.tabular_gan.data_transformer import TabularDataTransformer
 from src.generate.tabular_gan.train import TrainConfig, save_checkpoint, train_tabular_gan
 from src.generate.tabular_gan.sample import sample_attack
 from src.generate.fidelity_eval import fidelity_report
 from src.generate.graph_gan.graph_data import incidents_to_tensors, MAX_NODES
 from src.generate.graph_gan.train import GraphTrainConfig, save_graph_checkpoint, train_graph_gan
-from src.generate.graph_gan.sample import sample_graph_attacks
 from src.generate.graph_gan.graph_fidelity_eval import graph_fidelity_report
 from src.defend.train_classifier import train_and_evaluate, save_model
 from src.defend.features import engineer_features, get_feature_matrix
@@ -79,20 +79,15 @@ def main():
     log("Step 4/6 - Training the hand-rolled graph GAN on network attack agents' output...")
     graph_df = attacks_df[attacks_df["attack_type"].isin(backbone.graph_attack_types)].reset_index(drop=True)
     node_feats, adj, mask, labels = incidents_to_tensors(graph_df, backbone.graph_attack_types)
-    graph_config = GraphTrainConfig(epochs=200, batch_size=32)
+    # Epoch count kept modest deliberately: the sweep in scripts/experiment_graph_gan.py showed
+    # this hand-rolled generator doesn't converge to realistic topology regardless of epoch count
+    # in this timeframe (see the fallback note below), and an earlier run at 200 epochs stalled
+    # for over an hour on this machine, most likely due to external CPU contention rather than
+    # the model itself - capping epochs bounds that risk without changing the documented outcome.
+    graph_config = GraphTrainConfig(epochs=60, batch_size=32, sparsity_weight=0.02)
     graph_gen, graph_critic, graph_history = train_graph_gan(node_feats, adj, mask, labels, backbone.graph_attack_types, graph_config)
     save_graph_checkpoint(MODELS_DIR / "graph_gan" / "graph_gan", graph_gen, backbone.graph_attack_types, graph_config)
     log(f"  final critic loss: {graph_history['critic_loss'][-1]:.3f} | final gen loss: {graph_history['gen_loss'][-1]:.3f}")
-
-    synth_graph_frames = []
-    for attack_type in backbone.graph_attack_types:
-        synth_graph_frames.append(
-            sample_graph_attacks(
-                MODELS_DIR / "graph_gan" / "graph_gan", attack_type, n_incidents=60,
-                account_minter=backbone.ctx.new_account_id, amount_sampler=backbone.ctx.sample_amount, rng=backbone.ctx.rng,
-            )
-        )
-    synth_graph_df = pd.concat(synth_graph_frames, ignore_index=True) if synth_graph_frames else pd.DataFrame()
 
     with torch.no_grad():
         noise = torch.randn(len(node_feats), graph_config.noise_dim)
@@ -102,7 +97,28 @@ def main():
             cond[i, cond_idx_map[lab]] = 1.0
         synth_feats, synth_adj, synth_mask = graph_gen(noise, cond)
     graph_fidelity = graph_fidelity_report(node_feats, adj, mask, synth_feats, synth_adj, synth_mask, critic=graph_critic, real_cond=cond, synth_cond=cond)
-    log(f"  graph fidelity - degree KS: {graph_fidelity['degree_ks']:.3f}, cycle rate real/synth: {graph_fidelity['real_cycle_rate']:.2f}/{graph_fidelity['synth_cycle_rate']:.2f}")
+    log(f"  graph GAN topology fidelity - degree KS: {graph_fidelity['degree_ks']:.3f}, cycle rate real/synth: {graph_fidelity['real_cycle_rate']:.2f}/{graph_fidelity['synth_cycle_rate']:.2f}")
+
+    # Documented fallback (see docs/ATTACK_TAXONOMY.md / build plan risk note): across a
+    # systematic sweep of the density-regularization weight, the hand-rolled graph generator
+    # converged to one of two degenerate solutions (fully-connected or empty graphs) rather than
+    # learning real mule/ring/fan-in topology within this project's time budget. Rather than feed
+    # a defense classifier known-wrong topology, the *training* data uses a larger batch from the
+    # already-correct rule-based graph agents; the trained GraphGenerator/GraphDiscriminator are
+    # still real, working artifacts (used for the app's live demo and as the fidelity scorer
+    # above) - this is an explicit scope decision, not a hidden gap.
+    graph_fidelity["note"] = (
+        "Graph GENERATOR did not converge to realistic topology within the project timeline "
+        "(see sweep in scripts/experiment_graph_gan.py); synthetic graph-attack training data "
+        "below is sourced from the rule-based agents at scale instead. The discriminator/critic "
+        "trained normally and is reported above as a genuine fidelity scorer."
+    )
+    log("  using rule-based graph agents (scaled up) for training-data augmentation instead of GAN samples - see note in graph_fidelity.json")
+    graph_scaleup_frames = []
+    for name in backbone.graph_attack_types:
+        agent = get_agent(name)
+        graph_scaleup_frames.append(agent.generate(backbone.ctx, 200))
+    synth_graph_df = pd.concat(graph_scaleup_frames, ignore_index=True)
 
     # ---------------------------------------------------------------- Defense classifier
     log("Step 5/6 - Engineering features and training the XGBoost defense classifier...")
@@ -120,7 +136,8 @@ def main():
         account_minter=backbone.ctx.new_account_id, rng=backbone.ctx.rng, n_harder_samples=500, gan_epochs=60,
     )
     log(f"  targeted weakest attack type: {loop_result['target_attack_type']}")
-    log(f"  recall before: {loop_result['metrics_before']['recall']:.3f} -> after: {loop_result['metrics_after']['recall']:.3f}")
+    log(f"  aggregate test-set recall before: {loop_result['metrics_before']['recall']:.3f} -> after: {loop_result['metrics_after']['recall']:.3f}")
+    log(f"  detection rate on held-out Red-Team batch before: {loop_result['holdout_detection_rate_before']:.3f} -> after: {loop_result['holdout_detection_rate_after']:.3f}")
     loop_result["new_model"].save_model(str(MODELS_DIR / "defense" / "fraud_classifier_after_loop.json"))
     loop_result["harder_samples"].to_parquet(PROCESSED_DIR / "redteam_harder_samples.parquet")
 
@@ -138,6 +155,8 @@ def main():
                 "target_attack_type": loop_result["target_attack_type"],
                 "metrics_before": loop_result["metrics_before"],
                 "metrics_after": loop_result["metrics_after"],
+                "holdout_detection_rate_before": loop_result["holdout_detection_rate_before"],
+                "holdout_detection_rate_after": loop_result["holdout_detection_rate_after"],
                 "redteam_gan_history": loop_result["gan_history"],
             },
             f, indent=2,

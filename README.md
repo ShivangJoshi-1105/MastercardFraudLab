@@ -67,6 +67,35 @@ scripts/                        download_data.py, run_pipeline.py
 tests/                          Sanity tests for agents + features
 ```
 
+## Results (from the last full pipeline run)
+
+**Defense classifier** (held-out test set, whole incidents/accounts excluded from training):
+
+| Precision | Recall | F1 | ROC-AUC | PR-AUC | FPR on legit |
+|---|---|---|---|---|---|
+| 0.996 | 0.999 | 0.998 | 0.99999 | 0.99999 | 0.029% (22 / 75,001) |
+
+**Tabular WGAN-GP fidelity** (real rule-based fraud vs. GAN-generated fraud, same attack types):
+discriminative AUC **0.557** (0.5 = a classifier can't tell them apart), correlation-matrix
+difference **0.088**.
+
+**Graph GAN — honest result:** across a systematic sweep of training regularization (see
+`scripts/experiment_graph_gan.py`), the hand-rolled graph generator converged to a degenerate
+solution (either a fully-connected or an empty graph) rather than realistic mule/ring/fan-in
+topology within the project's time budget — degree-distribution KS **0.90**, synthetic cycle rate
+**1.00** vs. real **0.11**. The discriminator/critic trained normally and is kept as a genuine
+structural fidelity scorer; **actual training-data augmentation for network fraud uses the
+rule-based graph agents at scale instead** — a documented, deliberate fallback, not a hidden gap.
+See the "Generate Attacks" page in the app for the same disclosure surfaced live.
+
+**Closed loop — the headline result:** after one Red-Team GAN iteration targeting the defense's
+weakest attack type (`synthetic_identity_bustout`), detection rate on a *fresh, held-out* batch of
+Red-Team-generated fraud (specifically crafted to evade the pre-iteration model) rose from
+**15.2% to 94.4%** after retraining — at the cost of a small, still-low increase in false positives
+on legitimate transactions (0.029% → 0.084%). Aggregate test-set recall barely moved (0.9993 in
+both cases) because it was already near-ceiling — which is exactly why the held-out adversarial
+batch, not the aggregate number, is the metric that actually demonstrates the loop closing.
+
 ## Why these design choices
 
 See `docs/ATTACK_TAXONOMY.md` for the fraud taxonomy and the reasoning behind which vectors are

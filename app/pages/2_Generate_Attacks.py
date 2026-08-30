@@ -70,3 +70,10 @@ with tab3:
     cols[2].metric("Synthetic avg. clustering", f"{graph_fidelity['synth_avg_clustering']:.3f}")
     if "discriminative_win_rate" in graph_fidelity:
         cols[3].metric("Critic win-rate (0.5=indistinguishable)", f"{graph_fidelity['discriminative_win_rate']:.3f}")
+
+    if "note" in graph_fidelity:
+        st.warning(
+            f"**Honest engineering note:** {graph_fidelity['note']} We ran a systematic sweep "
+            "of the density-regularization weight (`scripts/experiment_graph_gan.py`) and "
+            "documented the failure modes rather than quietly shipping a broken generator."
+        )

@@ -146,14 +146,20 @@ def main():
         f"One closed-loop iteration: the defense's false negatives on the held-out set identified "
         f"'{closed_loop['target_attack_type']}' as its weakest attack type. The Red-Team GAN was "
         "trained against a surrogate of the live classifier, conditioned on that type, producing "
-        "a harder synthetic batch explicitly optimized to evade the current defense. Folding that "
-        "batch in and retraining moved recall from "
-        f"{closed_loop['metrics_before']['recall']:.3f} to "
-        f"{closed_loop['metrics_after']['recall']:.3f}, while false-positive rate on legit "
-        f"transactions changed from {closed_loop['metrics_before']['false_positive_rate_on_legit']:.4f} "
-        f"to {closed_loop['metrics_after']['false_positive_rate_on_legit']:.4f} — a concrete, "
-        "measured demonstration that the attacker and defender genuinely adapt to each other, "
-        "rather than three independent pillars presented side by side.",
+        "a harder synthetic batch explicitly optimized to evade the current defense. On a fresh, "
+        "disjoint batch sampled from that same Red-Team GAN (fraud designed to evade the *before* "
+        "model specifically), detection rate moved from "
+        f"{closed_loop.get('holdout_detection_rate_before', float('nan')):.1%} before retraining "
+        f"to {closed_loop.get('holdout_detection_rate_after', float('nan')):.1%} after — a "
+        "concrete, measured demonstration that the attacker and defender genuinely adapt to each "
+        "other, rather than three independent pillars presented side by side. (Aggregate held-out "
+        f"test-set recall, for reference, moved from {closed_loop['metrics_before']['recall']:.3f} "
+        f"to {closed_loop['metrics_after']['recall']:.3f} — already near-ceiling before this "
+        "iteration, which is why the held-out Red-Team batch is the more informative number here.) "
+        f"False-positive rate on legitimate transactions changed from "
+        f"{closed_loop['metrics_before']['false_positive_rate_on_legit']:.4f} to "
+        f"{closed_loop['metrics_after']['false_positive_rate_on_legit']:.4f} across the same "
+        "retraining step.",
     )
     add_body(
         doc,

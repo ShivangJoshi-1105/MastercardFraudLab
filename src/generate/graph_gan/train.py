@@ -35,6 +35,9 @@ class GraphTrainConfig:
     critic_iters: int = 5
     lr: float = 1e-4
     device: str = "cpu"
+    sparsity_weight: float = 0.0  # weight on the density-*matching* penalty (see the training
+    # loop below) - counters both the "everything connected" and "nothing connected" degenerate
+    # solutions an undertrained edge head can settle into
 
 
 def graph_gradient_penalty(critic: GraphDiscriminator, real, fake, cond, device):
@@ -98,7 +101,21 @@ def train_graph_gan(node_feats, adj, mask, labels: list[str], cond_vocab: list[s
 
             noise = torch.randn(batch_size, config.noise_dim, device=device)
             f_feats, f_adj, f_mask = gen(noise, r_cond)
-            g_loss = -critic(f_feats, f_adj, f_mask, r_cond).mean()
+            adv_loss = -critic(f_feats, f_adj, f_mask, r_cond).mean()
+            # Density-matching penalty (not a plain sparsity penalty - see train.py's module
+            # docstring risk note): an undertrained edge head can win against the critic cheaply
+            # by producing a near-complete graph every time (real mule/ring/fan-in subgraphs are
+            # sparse), but a penalty that just *minimizes* density has an equally cheap trivial
+            # optimum - an empty graph - which is exactly what a plain sparsity penalty collapsed
+            # to in practice. Matching the *real batch's own* density instead removes that trivial
+            # minimum: both "too dense" and "too empty" are now penalized, so the only way to
+            # reduce this loss is to actually track real graphs' edge density.
+            node_mask_pairs = f_mask.unsqueeze(1) * f_mask.unsqueeze(2)
+            fake_density = (f_adj * node_mask_pairs).sum() / node_mask_pairs.sum().clamp(min=1.0)
+            real_mask_pairs = r_mask.unsqueeze(1) * r_mask.unsqueeze(2)
+            real_density = ((r_adj * real_mask_pairs).sum() / real_mask_pairs.sum().clamp(min=1.0)).detach()
+            density_penalty = (fake_density - real_density) ** 2
+            g_loss = adv_loss + config.sparsity_weight * density_penalty
             opt_g.zero_grad()
             g_loss.backward()
             opt_g.step()
