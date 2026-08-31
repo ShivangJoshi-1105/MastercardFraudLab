@@ -71,14 +71,18 @@ with col1:
 with col2:
     st.subheader("Synthetic (graph GAN)")
     if st.button("Sample from graph GAN", key="synth_graph"):
-        gen, cond_vocab, noise_dim = load_graph_gan()
-        cond_idx = cond_vocab.index(attack_type)
-        noise = torch.randn(1, noise_dim)
-        cond = torch.zeros(1, len(cond_vocab))
-        cond[0, cond_idx] = 1.0
-        with torch.no_grad():
-            node_feats, adj, mask = gen(noise, cond)
-        draw_graph(adj[0].numpy(), mask[0].numpy(), f"Synthetic: {attack_type}")
+        try:
+            gen, cond_vocab, noise_dim = load_graph_gan()
+            cond_idx = cond_vocab.index(attack_type)
+            noise = torch.randn(1, noise_dim)
+            cond = torch.zeros(1, len(cond_vocab))
+            cond[0, cond_idx] = 1.0
+            with torch.no_grad():
+                node_feats, adj, mask = gen(noise, cond)
+            draw_graph(adj[0].numpy(), mask[0].numpy(), f"Synthetic: {attack_type}")
+        except Exception as e:
+            st.error(f"Sampling failed: {type(e).__name__}: {e}")
+            st.exception(e)
 
 st.divider()
 st.markdown(

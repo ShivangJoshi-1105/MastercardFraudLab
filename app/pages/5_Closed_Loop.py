@@ -34,14 +34,18 @@ else:
         st.warning("Generate at least 2 incidents (ideally more, and more than one type) on the Generate Attacks page for a meaningful train/holdout split.")
 
     if st.button("Retrain on my session pool", type="primary"):
-        from src.closed_loop.feedback import run_session_iteration
+        try:
+            from src.closed_loop.feedback import run_session_iteration
 
-        with st.spinner("Retraining on your session pool (a few seconds)..."):
-            model = load_defense_model()
-            legit_reference = load_parquet("demo_legit_sample.parquet")
-            background_train = pd.read_parquet(PROCESSED_DIR / "closed_loop_demo_train_sample.parquet")
-            result = run_session_iteration(session_pool, legit_reference, background_train, model, seed=int(np.random.randint(0, 1_000_000)))
-        st.session_state["session_loop_result"] = result
+            with st.spinner("Retraining on your session pool (a few seconds)..."):
+                model = load_defense_model()
+                legit_reference = load_parquet("demo_legit_sample.parquet")
+                background_train = pd.read_parquet(PROCESSED_DIR / "closed_loop_demo_train_sample.parquet")
+                result = run_session_iteration(session_pool, legit_reference, background_train, model, seed=int(np.random.randint(0, 1_000_000)))
+            st.session_state["session_loop_result"] = result
+        except Exception as e:
+            st.error(f"Retrain failed: {type(e).__name__}: {e}")
+            st.exception(e)
 
     if "session_loop_result" in st.session_state:
         r = st.session_state["session_loop_result"]
@@ -77,28 +81,32 @@ st.markdown(
 )
 
 if st.button("Run automatic mining iteration"):
-    from src.closed_loop.feedback import run_closed_loop_iteration
+    try:
+        from src.closed_loop.feedback import run_closed_loop_iteration
 
-    with st.spinner("Mining weak spots, training Red-Team GAN, retraining classifier..."):
-        model = load_defense_model()
-        test_df = load_parquet("test_set.parquet")
-        train_sample = pd.read_parquet(PROCESSED_DIR / "closed_loop_demo_train_sample.parquet")
-        _, transformer, cond_vocab, _ = load_tabular_gan()
+        with st.spinner("Mining weak spots, training Red-Team GAN, retraining classifier..."):
+            model = load_defense_model()
+            test_df = load_parquet("test_set.parquet")
+            train_sample = pd.read_parquet(PROCESSED_DIR / "closed_loop_demo_train_sample.parquet")
+            _, transformer, cond_vocab, _ = load_tabular_gan()
 
-        rng = np.random.default_rng()
-        counter = {"n": 0}
+            rng = np.random.default_rng()
+            counter = {"n": 0}
 
-        def account_minter(prefix):
-            counter["n"] += 1
-            return f"{prefix}LIVE{counter['n']}{int(rng.integers(0, 999999))}"
+            def account_minter(prefix):
+                counter["n"] += 1
+                return f"{prefix}LIVE{counter['n']}{int(rng.integers(0, 999999))}"
 
-        y_prob_test_before = model.predict_proba(get_feature_matrix(test_df))[:, 1]
-        result = run_closed_loop_iteration(
-            train_sample, test_df, model, y_prob_test_before, transformer, cond_vocab,
-            account_minter, rng, n_harder_samples=150, gan_epochs=25,
-        )
-    st.session_state["live_closed_loop_result"] = result
-    st.success(f"Done. Targeted weakest attack type: `{result['target_attack_type']}`")
+            y_prob_test_before = model.predict_proba(get_feature_matrix(test_df))[:, 1]
+            result = run_closed_loop_iteration(
+                train_sample, test_df, model, y_prob_test_before, transformer, cond_vocab,
+                account_minter, rng, n_harder_samples=150, gan_epochs=25,
+            )
+        st.session_state["live_closed_loop_result"] = result
+        st.success(f"Done. Targeted weakest attack type: `{result['target_attack_type']}`")
+    except Exception as e:
+        st.error(f"Run failed: {type(e).__name__}: {e}")
+        st.exception(e)
 
 if "live_closed_loop_result" in st.session_state:
     r = st.session_state["live_closed_loop_result"]

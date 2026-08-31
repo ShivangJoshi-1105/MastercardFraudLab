@@ -67,14 +67,18 @@ with tab2:
     attack_type = st.selectbox("Sample synthetic fraud of type", backbone.tabular_attack_types, key="gan_attack_type")
     n_samples = st.slider("How many synthetic rows", 10, 500, 100, key="gan_n")
     if st.button("Sample from tabular GAN"):
-        from src.generate.tabular_gan.sample import sample_attack
+        try:
+            from src.generate.tabular_gan.sample import sample_attack
 
-        synth = sample_attack(MODELS_DIR / "tabular_gan" / "tabular_gan", attack_type, n_samples, backbone.ctx.new_account_id, backbone.ctx.rng)
-        add_to_session_pool(synth)
-        st.success(f"Sampled {len(synth)} rows — added to your session pool.")
-        st.dataframe(synth, use_container_width=True)
-        fig = px.histogram(synth, x="amount", nbins=40, title=f"GAN-generated amount distribution — {attack_type}")
-        st.plotly_chart(fig, use_container_width=True)
+            synth = sample_attack(MODELS_DIR / "tabular_gan" / "tabular_gan", attack_type, n_samples, backbone.ctx.new_account_id, backbone.ctx.rng)
+            add_to_session_pool(synth)
+            st.success(f"Sampled {len(synth)} rows — added to your session pool.")
+            st.dataframe(synth, use_container_width=True)
+            fig = px.histogram(synth, x="amount", nbins=40, title=f"GAN-generated amount distribution — {attack_type}")
+            st.plotly_chart(fig, use_container_width=True)
+        except Exception as e:
+            st.error(f"Sampling failed: {type(e).__name__}: {e}")
+            st.exception(e)
 
 with tab3:
     st.subheader("Graph GAN — network-structured fraud (mule chains, rings, fan-in bursts)")
