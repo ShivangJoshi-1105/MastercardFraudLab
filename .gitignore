@@ -13,6 +13,7 @@ data/processed/*
 !data/processed/demo_legit_sample.parquet
 !data/processed/demo_victim_balances.parquet
 !data/processed/demo_backbone_meta.json
+!data/processed/closed_loop_demo_train_sample.parquet
 .streamlit/
 .pytest_cache/
 .vscode/
