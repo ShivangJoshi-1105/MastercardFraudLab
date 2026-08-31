@@ -36,7 +36,14 @@ IDENTIFY  →  GENERATE  →  DEFEND
    the Red-Team GAN to generate a harder adversarial batch, retrains, and demonstrates the
    metric improvement.
 
-All of this is demoed live in a 5-page Streamlit app (`app/`).
+All of this is demoed live in a 5-page Streamlit app (`app/`). The pages are connected, not
+independent: attacks generated on the **Generate Attacks** page accumulate into a per-session
+pool; **Live Defense Demo** scores that pool against the live classifier on demand; **Closed
+Loop** retrains a session-scoped classifier on exactly that pool (incident-level train/holdout
+split, results in under 20 seconds) and reports detection before vs. after — driven by whatever
+the user just generated, alongside the separate automatic Red-Team GAN weak-spot mining. Neither
+live path overwrites the committed `fraud_classifier.json`, so the reference numbers below are
+unaffected by anything run in the app.
 
 ## Setup
 

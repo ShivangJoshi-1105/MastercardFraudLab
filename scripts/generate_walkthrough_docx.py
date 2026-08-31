@@ -211,7 +211,12 @@ def main():
         f"{closed_loop['metrics_after']['false_positive_rate_on_legit']:.4f} across the same "
         "retraining step. The application exposes this as a live action: mining, retraining, and "
         "re-measurement run on demand and produce a fresh result each time, not a fixed recorded "
-        "number.",
+        "number. A second, independent path in the same interface lets a user drive the loop "
+        "directly: attacks generated on the Generate Attacks page accumulate into a session pool, "
+        "which the Closed Loop page retrains a session-scoped classifier on (incident-level "
+        "train/holdout split, under 20 seconds) and reports detection on that user's own "
+        "held-out incidents before and after — without altering the committed defense model or "
+        "the reference figures above.",
     )
     h(doc, "Feasibility", level=2)
     p(
