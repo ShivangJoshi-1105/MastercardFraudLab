@@ -53,19 +53,16 @@ The last two setup steps aren't required just to view the app: `models/` and the
 `data/processed/*.parquet`/`*.json` files the app reads are already committed to this repo, so
 `streamlit run app\Home.py` works immediately after cloning + installing dependencies, without
 needing a Kaggle account or the 493MB raw CSV. Re-run `download_data.py` + `run_pipeline.py` only
-if you want to retrain everything from scratch.
+to retrain everything from scratch.
 
-## Deploying the web prototype (Streamlit Community Cloud)
+## Deployment (Streamlit Community Cloud)
 
-The submission requires an accessible web prototype, not just something that runs locally. Once
-this repo is pushed to GitHub:
-
-1. Go to **share.streamlit.io**, sign in with the same GitHub account, click **New app**.
-2. Pick this repository, branch `master`, main file path `app/Home.py`.
-3. Deploy. Because the model artifacts and demo data are committed (see above), no secrets or
-   extra configuration are needed — it should come up working on the first deploy.
-4. Streamlit Cloud runs on Python 3.11/3.12 images, not 3.13 — if the build fails on a dependency
-   resolution error, add a `runtime.txt` file at the repo root containing `3.11` and redeploy.
+1. Go to **share.streamlit.io** and click **New app**.
+2. Point it at this repository, branch `master`, main file path `app/Home.py`.
+3. Deploy — model artifacts and demo data are already committed, so no secrets or extra
+   configuration are needed.
+4. `runtime.txt` pins Python 3.11 for the deployment image (Streamlit Cloud does not yet support
+   3.13).
 
 ## Repository layout
 

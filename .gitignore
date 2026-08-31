@@ -18,3 +18,5 @@ data/processed/*
 .vscode/
 *.egg-info/
 .ipynb_checkpoints/
+docs/WALKTHROUGH.docx
+docs/~$*.docx

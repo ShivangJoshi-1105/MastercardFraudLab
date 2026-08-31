@@ -9,8 +9,8 @@ import torch
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from common import artifacts_ready, load_demo_backbone, load_graph_gan
 
-st.set_page_config(page_title="Fraud Network Explorer", page_icon="🕸️", layout="wide")
-st.title("🕸️ Fraud Network Explorer")
+st.set_page_config(page_title="Fraud Network Explorer", layout="wide")
+st.title("Fraud Network Explorer")
 st.caption("Mule chains, collusive rings, and fan-in bursts are topology, not row-level anomalies — this page shows the shape directly")
 
 if not artifacts_ready():

@@ -12,8 +12,8 @@ from common import artifacts_ready, load_defense_model, load_json, load_parquet,
 from src.defend.evaluate import evaluate_predictions
 from src.defend.features import FEATURE_COLUMNS, get_feature_matrix
 
-st.set_page_config(page_title="Live Defense Demo", page_icon="🛡️", layout="wide")
-st.title("🛡️ Pillar 3 — Live Defense Demo")
+st.set_page_config(page_title="Live Defense Demo", layout="wide")
+st.title("Pillar 3 — Live Defense Demo")
 st.caption("XGBoost on engineered velocity/balance/graph features, evaluated on a held-out set the model has never seen")
 
 if not artifacts_ready():

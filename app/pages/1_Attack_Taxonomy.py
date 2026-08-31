@@ -6,8 +6,8 @@ import streamlit as st
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from common import load_taxonomy
 
-st.set_page_config(page_title="Attack Taxonomy", page_icon="📋", layout="wide")
-st.title("📋 Pillar 1 — Attack Taxonomy")
+st.set_page_config(page_title="Attack Taxonomy", layout="wide")
+st.title("Pillar 1 — Attack Taxonomy")
 st.caption("25 GenAI-powered payment fraud vectors, each mapped to the transactional fingerprint it actually leaves behind")
 
 df = load_taxonomy()

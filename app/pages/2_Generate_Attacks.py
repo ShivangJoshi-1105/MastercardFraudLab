@@ -8,8 +8,8 @@ import streamlit as st
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from common import artifacts_ready, load_demo_backbone, load_json, MODELS_DIR, REPORTS_DIR
 
-st.set_page_config(page_title="Generate Attacks", page_icon="🧪", layout="wide")
-st.title("🧪 Pillar 2 — Generate Attacks")
+st.set_page_config(page_title="Generate Attacks", layout="wide")
+st.title("Pillar 2 — Generate Attacks")
 st.caption("Rule-based agents establish the ground-truth fraud pattern; two from-scratch GANs learn to scale it up")
 
 if not artifacts_ready():

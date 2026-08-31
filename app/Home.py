@@ -2,9 +2,9 @@ import streamlit as st
 
 from common import artifacts_ready
 
-st.set_page_config(page_title="AI Defense Lab for Payment Security", page_icon="🛡️", layout="wide")
+st.set_page_config(page_title="AI Defense Lab for Payment Security", layout="wide")
 
-st.title("🛡️ AI Defense Lab for Payment Security")
+st.title("AI Defense Lab for Payment Security")
 st.caption("Mastercard Innovation Challenge @ GFF 2026 — a closed-loop red-team/blue-team system for GenAI-powered payment fraud")
 
 st.markdown(

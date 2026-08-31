@@ -8,8 +8,8 @@ import streamlit as st
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from common import artifacts_ready, load_json, REPORTS_DIR
 
-st.set_page_config(page_title="Closed Loop", page_icon="🔁", layout="wide")
-st.title("🔁 Closing the Loop — Red-Team GAN")
+st.set_page_config(page_title="Closed Loop", layout="wide")
+st.title("Closing the Loop — Red-Team GAN")
 st.caption("Our own GAN modification: the generator is rewarded for evading the *current* defense, not just for fooling the critic")
 
 if not artifacts_ready():
