@@ -37,6 +37,63 @@ from ..generate.tabular_gan.data_transformer import TabularDataTransformer
 from ..generate.tabular_gan.train import TrainConfig
 
 
+def run_session_iteration(
+    session_pool: pd.DataFrame,
+    legit_reference: pd.DataFrame,
+    background_train: pd.DataFrame,
+    model,
+    threshold: float = 0.5,
+    seed: int = 0,
+):
+    """
+    A second, faster closed-loop path driven directly by whatever a user generated in the app's
+    Generate Attacks page, rather than by internally-mined weak spots. This is what makes the
+    Closed Loop page's headline demo literal: attacks a person just produced become the training
+    signal, and the same model architecture is retrained and re-measured against a held-out half
+    of that exact pool - not against a canned batch.
+
+    `session_pool` / `legit_reference` are raw PaySim-schema rows (not yet feature-engineered).
+    `background_train` is a small, pre-engineered general sample folded in alongside the user's
+    attacks so the retrain isn't learning from a handful of rows in isolation, which would
+    otherwise make the "after" model a narrow memorizer rather than a generalizing classifier.
+
+    Split is by `incident_id` (not row) so a multi-row incident - a mule chain, a bust-out
+    lifecycle - never has some of its own rows in the training half and others in the held-out
+    half, which would leak.
+    """
+    rng = np.random.default_rng(seed)
+    incident_ids = np.array(session_pool["incident_id"].unique(), dtype=object)
+    rng.shuffle(incident_ids)
+    split = max(1, len(incident_ids) // 2)
+    train_incidents, holdout_incidents = set(incident_ids[:split]), set(incident_ids[split:])
+    if not holdout_incidents:  # only one incident total - test on it, still train on something
+        holdout_incidents, train_incidents = train_incidents, set()
+
+    train_half = session_pool[session_pool["incident_id"].isin(train_incidents)]
+    holdout_half = session_pool[session_pool["incident_id"].isin(holdout_incidents)]
+
+    holdout_engineered = engineer_features(holdout_half)
+    y_prob_before = model.predict_proba(get_feature_matrix(holdout_engineered))[:, 1]
+    detection_before = float((y_prob_before >= threshold).mean())
+
+    legit_engineered = engineer_features(legit_reference).assign(attack_type="legit", incident_id="legit", label=0)
+    train_engineered = engineer_features(train_half).assign(label=1) if len(train_half) else train_half
+    retrain_df = pd.concat([background_train, legit_engineered, train_engineered], ignore_index=True)
+    new_model = train_xgboost(retrain_df)
+
+    y_prob_after = new_model.predict_proba(get_feature_matrix(holdout_engineered))[:, 1]
+    detection_after = float((y_prob_after >= threshold).mean())
+
+    return {
+        "n_train_incidents": len(train_incidents),
+        "n_holdout_incidents": len(holdout_incidents),
+        "n_holdout_rows": len(holdout_half),
+        "detection_before": detection_before,
+        "detection_after": detection_after,
+        "new_model": new_model,
+    }
+
+
 def worst_attack_type(test_df: pd.DataFrame, y_prob: np.ndarray, threshold: float = 0.5) -> str:
     fn_mask = false_negatives_mask(test_df["label"].to_numpy(), y_prob, threshold)
     fraud_only = test_df[test_df["label"] == 1].reset_index(drop=True)

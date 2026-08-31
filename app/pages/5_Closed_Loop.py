@@ -7,35 +7,77 @@ import plotly.express as px
 import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from common import artifacts_ready, load_defense_model, load_json, load_parquet, load_tabular_gan, PROCESSED_DIR, REPORTS_DIR
+from common import artifacts_ready, get_session_pool, load_defense_model, load_json, load_parquet, load_tabular_gan, PROCESSED_DIR, REPORTS_DIR
 from src.defend.features import get_feature_matrix
 
 st.set_page_config(page_title="Closed Loop", layout="wide")
-st.title("Closing the Loop — Red-Team GAN")
-st.caption("The generator is rewarded for evading the current defense, not just for fooling the critic — this is what makes the system a loop instead of three separate pillars")
+st.title("Closing the Loop")
+st.caption("The defense retrains on the attacks it just failed to catch — attacker and defender adapt to each other instead of running as three separate pillars")
 
 if not artifacts_ready():
     st.warning("Run `python scripts/run_pipeline.py` first.")
     st.stop()
 
+st.divider()
+st.header("A. Close the loop on what you generated")
+st.caption("Uses exactly the attacks accumulated in your session pool from the Generate Attacks page — nothing prebuilt.")
+
+session_pool = get_session_pool()
+
+if len(session_pool) == 0:
+    st.info("Your session pool is empty. Go to **Generate Attacks**, generate a few incidents (any agent or GAN), then come back here.")
+else:
+    n_incidents = session_pool["incident_id"].nunique()
+    st.markdown(f"**Session pool:** {len(session_pool)} transactions across {n_incidents} incident(s), types: {', '.join(sorted(session_pool['attack_type'].unique()))}")
+
+    if n_incidents < 2:
+        st.warning("Generate at least 2 incidents (ideally more, and more than one type) on the Generate Attacks page for a meaningful train/holdout split.")
+
+    if st.button("Retrain on my session pool", type="primary"):
+        from src.closed_loop.feedback import run_session_iteration
+
+        with st.spinner("Retraining on your session pool (a few seconds)..."):
+            model = load_defense_model()
+            legit_reference = load_parquet("demo_legit_sample.parquet")
+            background_train = pd.read_parquet(PROCESSED_DIR / "closed_loop_demo_train_sample.parquet")
+            result = run_session_iteration(session_pool, legit_reference, background_train, model, seed=int(np.random.randint(0, 1_000_000)))
+        st.session_state["session_loop_result"] = result
+
+    if "session_loop_result" in st.session_state:
+        r = st.session_state["session_loop_result"]
+        st.markdown(
+            f"Trained on **{r['n_train_incidents']} incident(s)** from your pool (plus a small background reference set); "
+            f"held out the other **{r['n_holdout_incidents']} incident(s)** ({r['n_holdout_rows']} rows) for evaluation — "
+            "the model never saw these during this retrain."
+        )
+        c1, c2 = st.columns(2)
+        c1.metric("Detected in your held-out incidents — before", f"{r['detection_before']:.1%}")
+        c2.metric(
+            "Detected in your held-out incidents — after", f"{r['detection_after']:.1%}",
+            delta=f"{(r['detection_after'] - r['detection_before']):+.1%}",
+        )
+        st.caption(
+            "This is a session-scoped model trained only in memory for this demo — it never "
+            "overwrites the deployed defense model, so the reference numbers in README.md and the "
+            "walkthrough are unaffected by anything run here."
+        )
+
+st.divider()
+st.header("B. Automatic weak-spot mining — Red-Team GAN")
+st.caption("A second, independent mechanism: instead of using your generated attacks, this mines whatever the current model is already weakest against and trains a generator specifically to exploit it.")
+
 st.markdown(
     """
-**Mechanism:**
-1. The defense's false negatives on the held-out test set are mined to find its weakest attack type.
+1. False negatives on the held-out test set are mined to find the defense's weakest attack type.
 2. A differentiable surrogate of the live XGBoost classifier is distilled in the tabular GAN's representation space.
-3. The Red-Team GAN generator trains against that surrogate, so its output is explicitly optimized to be scored as legitimate by the current defense.
+3. A Red-Team GAN generator trains against that surrogate — its own loss rewards it for being scored as legitimate by the current defense, not only for fooling the critic.
 4. The harder synthetic batch is folded into the training set and the classifier is retrained.
-5. Detection rate is re-measured on a fresh, disjoint batch from the same Red-Team GAN — fraud built to evade the pre-iteration model — so the before/after comparison tests whether retraining actually closed the gap, not just aggregate metrics that are already near-ceiling.
+5. Detection rate is re-measured on a fresh, disjoint batch from the same Red-Team GAN, since aggregate test-set metrics are already near-ceiling and cannot visibly move in one round.
 """
 )
 
-st.divider()
-st.subheader("Run an iteration now")
-st.caption("Runs live: mines the current model's weak spot, trains a Red-Team GAN generator against it, retrains the classifier, and measures the result — same mechanism as the full pipeline, on a smaller sample so it completes in under a minute.")
-
-if st.button("Run closed-loop iteration", type="primary"):
+if st.button("Run automatic mining iteration"):
     from src.closed_loop.feedback import run_closed_loop_iteration
-    from src.generate.tabular_gan.train import TrainConfig
 
     with st.spinner("Mining weak spots, training Red-Team GAN, retraining classifier..."):
         model = load_defense_model()
@@ -68,14 +110,14 @@ if "live_closed_loop_result" in st.session_state:
         delta=f"{(r['holdout_detection_rate_after'] - r['holdout_detection_rate_before']):+.1%}",
     )
     st.caption(
-        "Both numbers come from this run's own fresh, held-out Red-Team batch — re-running the "
-        "button above mines whatever the retrained model's new weakest spot is and produces a "
-        "different batch and different numbers, since the loop keeps adapting each time."
+        "Both numbers come from this run's own fresh, held-out Red-Team batch — re-running mines "
+        "whatever the retrained model's new weakest spot is and produces a different batch and "
+        "different numbers each time."
     )
 
 st.divider()
-st.subheader("Reference: full offline run (documented in README.md and the walkthrough)")
-st.caption("Same mechanism, run once against the full training set for the numbers reported in the write-up.")
+st.header("Reference: full offline run")
+st.caption("Same mechanism as section B, run once against the full training set — the numbers reported in README.md and the walkthrough.")
 
 result = load_json(REPORTS_DIR / "closed_loop.json")
 

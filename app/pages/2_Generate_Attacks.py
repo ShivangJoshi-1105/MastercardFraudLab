@@ -6,7 +6,7 @@ import plotly.express as px
 import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from common import artifacts_ready, load_demo_backbone, load_json, MODELS_DIR, REPORTS_DIR
+from common import add_to_session_pool, artifacts_ready, clear_session_pool, get_session_pool, load_demo_backbone, load_json, MODELS_DIR, REPORTS_DIR
 
 st.set_page_config(page_title="Generate Attacks", layout="wide")
 st.title("Pillar 2 — Generate Attacks")
@@ -15,6 +15,23 @@ st.caption("Rule-based agents establish the ground-truth fraud pattern; two from
 if not artifacts_ready():
     st.warning("Run `python scripts/run_pipeline.py` first.")
     st.stop()
+
+pool = get_session_pool()
+pool_col1, pool_col2 = st.columns([3, 1])
+with pool_col1:
+    if len(pool):
+        st.info(
+            f"**Your session pool: {len(pool)} transactions** across {pool['attack_type'].nunique()} "
+            f"attack type(s) ({', '.join(sorted(pool['attack_type'].unique()))}). Everything generated "
+            "below is added to this pool - go to **Live Defense Demo** to score it, or **Closed Loop** "
+            "to retrain on it."
+        )
+    else:
+        st.info("Your session pool is empty. Generate some attacks below - they carry through to the Live Defense Demo and Closed Loop pages.")
+with pool_col2:
+    if st.button("Clear session pool", disabled=len(pool) == 0):
+        clear_session_pool()
+        st.rerun()
 
 tab1, tab2, tab3 = st.tabs(["Rule-based agents (live)", "Tabular WGAN-GP", "Graph GAN"])
 
@@ -30,7 +47,8 @@ with tab1:
 
         agent = get_agent(agent_name)
         df = agent.generate(backbone.ctx, n_incidents)
-        st.success(f"Generated {len(df)} transactions across {n_incidents} incidents of type `{agent_name}`.")
+        add_to_session_pool(df)
+        st.success(f"Generated {len(df)} transactions across {n_incidents} incidents of type `{agent_name}` — added to your session pool.")
         st.dataframe(df, use_container_width=True)
         st.download_button("Download as CSV", df.to_csv(index=False), file_name=f"{agent_name}_sample.csv")
 
@@ -52,6 +70,8 @@ with tab2:
         from src.generate.tabular_gan.sample import sample_attack
 
         synth = sample_attack(MODELS_DIR / "tabular_gan" / "tabular_gan", attack_type, n_samples, backbone.ctx.new_account_id, backbone.ctx.rng)
+        add_to_session_pool(synth)
+        st.success(f"Sampled {len(synth)} rows — added to your session pool.")
         st.dataframe(synth, use_container_width=True)
         fig = px.histogram(synth, x="amount", nbins=40, title=f"GAN-generated amount distribution — {attack_type}")
         st.plotly_chart(fig, use_container_width=True)
@@ -77,3 +97,15 @@ with tab3:
             "of the density-regularization weight (`scripts/experiment_graph_gan.py`) and "
             "documented the failure modes rather than quietly shipping a broken generator."
         )
+
+    st.markdown("**Generate network fraud with the rule-based topology agents instead** (correct topology, added to your session pool):")
+    graph_attack_type = st.selectbox("Network attack type", backbone.graph_attack_types, key="graph_attack_type")
+    n_graph_incidents = st.slider("Number of incidents", 1, 20, 3, key="graph_n")
+    if st.button("Generate", key="gen_graph"):
+        from src.generate.rule_based_agents import get_agent
+
+        agent = get_agent(graph_attack_type)
+        gdf = agent.generate(backbone.ctx, n_graph_incidents)
+        add_to_session_pool(gdf)
+        st.success(f"Generated {len(gdf)} transactions across {n_graph_incidents} incidents of type `{graph_attack_type}` — added to your session pool.")
+        st.dataframe(gdf, use_container_width=True)

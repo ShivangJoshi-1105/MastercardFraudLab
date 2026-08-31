@@ -63,6 +63,26 @@ def artifacts_ready() -> bool:
     return (MODELS_DIR / "defense" / "fraud_classifier.json").exists()
 
 
+SESSION_POOL_KEY = "session_attack_pool"
+
+
+def add_to_session_pool(df: pd.DataFrame) -> None:
+    """Accumulates attacks generated on the Generate Attacks page into this browser session's
+    state, so the Live Defense Demo and Closed Loop pages can act on exactly what this user
+    produced - st.session_state is per-session (per browser tab), so this never mixes one
+    visitor's generated attacks with another's."""
+    existing = st.session_state.get(SESSION_POOL_KEY)
+    st.session_state[SESSION_POOL_KEY] = pd.concat([existing, df], ignore_index=True) if existing is not None else df.copy()
+
+
+def get_session_pool() -> pd.DataFrame:
+    return st.session_state.get(SESSION_POOL_KEY, pd.DataFrame())
+
+
+def clear_session_pool() -> None:
+    st.session_state.pop(SESSION_POOL_KEY, None)
+
+
 @st.cache_resource
 def load_demo_backbone():
     """A small, committed sample (built by `scripts/build_demo_backbone.py`) rather than the

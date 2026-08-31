@@ -8,9 +8,9 @@ import shap
 import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from common import artifacts_ready, load_defense_model, load_json, load_parquet, MODELS_DIR
+from common import artifacts_ready, get_session_pool, load_defense_model, load_json, load_parquet, MODELS_DIR
 from src.defend.evaluate import evaluate_predictions
-from src.defend.features import FEATURE_COLUMNS, get_feature_matrix
+from src.defend.features import FEATURE_COLUMNS, engineer_features, get_feature_matrix
 
 st.set_page_config(page_title="Live Defense Demo", layout="wide")
 st.title("Pillar 3 — Live Defense Demo")
@@ -24,6 +24,23 @@ model = load_defense_model()
 test_df = load_parquet("test_set.parquet")
 saved_metrics = load_json(MODELS_DIR / "defense" / "metrics.json")
 
+session_pool = get_session_pool()
+st.subheader("Score what you generated")
+if len(session_pool) == 0:
+    st.info("Your session pool is empty — generate some attacks on the **Generate Attacks** page first, then come back here to see whether the current defense catches them.")
+else:
+    session_engineered = engineer_features(session_pool)
+    session_prob = model.predict_proba(get_feature_matrix(session_engineered))[:, 1]
+    caught = int((session_prob >= 0.5).sum())
+    st.metric(f"Caught by the current live model (threshold 0.5)", f"{caught} / {len(session_pool)}")
+    display = session_engineered.assign(fraud_probability=session_prob, flagged=session_prob >= 0.5)
+    st.dataframe(
+        display[["step", "type", "amount", "attack_type", "fraud_probability", "flagged"]].sort_values("fraud_probability", ascending=False),
+        use_container_width=True, height=250,
+    )
+    st.caption("This is pure inference against the already-trained model — nothing here retrains anything. To actually retrain on these, use the Closed Loop page.")
+
+st.divider()
 X_test = get_feature_matrix(test_df)
 y_test = test_df["label"].to_numpy()
 y_prob = model.predict_proba(X_test)[:, 1]
