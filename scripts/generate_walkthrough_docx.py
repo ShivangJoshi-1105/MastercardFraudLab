@@ -1,9 +1,8 @@
 """
-Generates docs/WALKTHROUGH.docx - the required Word write-up - by pulling real numbers out of
-the artifacts `run_pipeline.py` produced (metrics.json, fidelity reports, closed_loop.json)
-rather than hand-typing results that could drift out of sync with the actual trained model.
+Generates docs/WALKTHROUGH.docx from the artifacts scripts/run_pipeline.py produced, so figures
+in the document stay in sync with the trained model rather than being typed in by hand.
 
-Run this *after* `scripts/run_pipeline.py` has completed.
+Run after scripts/run_pipeline.py has completed.
 """
 
 from __future__ import annotations
@@ -27,14 +26,12 @@ def load_json(path: Path) -> dict:
         return json.load(f)
 
 
-def add_heading(doc, text, level=1):
+def h(doc, text, level=1):
     doc.add_heading(text, level=level)
 
 
-def add_body(doc, text):
-    p = doc.add_paragraph(text)
-    p.style.font.size = Pt(11)
-    return p
+def p(doc, text, bullet=False):
+    doc.add_paragraph(text, style="List Bullet" if bullet else None)
 
 
 def main():
@@ -45,132 +42,192 @@ def main():
     graph_fidelity = load_json(REPORTS_DIR / "graph_fidelity.json")
     closed_loop = load_json(REPORTS_DIR / "closed_loop.json")
     taxonomy = load_taxonomy()
+    simulated = taxonomy[taxonomy["simulated"]]
 
     doc = Document()
     doc.add_heading("AI Defense Lab for Payment Security", level=0)
-    doc.add_paragraph("Mastercard Innovation Challenge @ GFF 2026 — Solution Walkthrough")
+    p(doc, "Solution Walkthrough")
 
-    # ---------------------------------------------------------------- Section 1
-    add_heading(doc, "1. Novel fraud attacks identified")
-    add_body(
+    # ================================================================== 1
+    h(doc, "1. The novel fraud attacks identified")
+    p(
         doc,
-        f"We built a taxonomy of {len(taxonomy)} distinct GenAI-powered payment fraud vectors, "
-        f"organized across {taxonomy['category'].nunique()} categories spanning the full payment "
-        "lifecycle: identity/onboarding, account takeover, card-not-present, money-mule networks, "
-        "social engineering/authorized push payment, systemic attacks on the defense itself, and "
-        "emerging agentic-commerce risk. Each vector is grounded in a specific GenAI capability "
-        "(voice cloning, deepfake video, LLM-driven personalization/automation, agentic bots) and "
-        "mapped to the transactional fingerprint it leaves behind — the behavioral trace a "
-        f"payments pipeline can actually observe. {int(taxonomy['simulated'].sum())} of these "
-        "vectors are concretely simulated in code; the remainder are documented for completeness "
-        "since their signal lives outside transaction data (e.g. document authenticity, security "
-        "properties of internal fraud-ops tooling).",
+        f"The taxonomy covers {len(taxonomy)} GenAI-powered payment fraud vectors across "
+        f"{taxonomy['category'].nunique()} categories, spanning the payment lifecycle from "
+        "onboarding through authentication, transaction, settlement/laundering, and dispute. "
+        "Each vector is tied to a specific GenAI capability (voice cloning, video deepfakes, "
+        "LLM-driven personalization and automation, autonomous agents) and to the transactional "
+        "fingerprint it produces once money moves — the signal a payments system can actually "
+        f"observe, as opposed to the GenAI artifact itself. {len(simulated)} of the {len(taxonomy)} "
+        "vectors are implemented as attack-generation agents; the rest are documented for "
+        "completeness because their signal is outside transaction data (document authenticity, "
+        "security properties of internal fraud-operations tooling).",
     )
-    add_body(doc, "Key vectors simulated in code:")
-    for _, row in taxonomy[taxonomy["simulated"]].iterrows():
-        doc.add_paragraph(f"{row['id']} — {row['name']}: {row['mechanism']}", style="List Bullet")
+    p(doc, "Categories:")
+    for cat in sorted(taxonomy["category"].unique()):
+        count = len(taxonomy[taxonomy["category"] == cat])
+        p(doc, f"{cat} — {count} vectors", bullet=True)
 
-    # ---------------------------------------------------------------- Section 2
-    add_heading(doc, "2. How the system generates and simulates these attacks")
-    add_body(
+    p(doc, "The 10 simulated attack types:")
+    for _, row in simulated.iterrows():
+        p(doc, f"{row['id']} {row['name']} — {row['mechanism']}", bullet=True)
+
+    # ================================================================== 2
+    h(doc, "2. How the system generates and simulates these attacks")
+    p(
         doc,
-        "Generation happens in two layers. First, 10 rule-based attack agents (7 behavioral, 3 "
-        "network/graph) inject precisely-labeled fraud incidents onto a real transaction backbone "
-        "(the PaySim mobile-money dataset), encoding each attack type's exact transactional "
-        "fingerprint from the taxonomy. Second, two from-scratch generative models learn to scale "
-        "those patterns up:",
-    )
-    doc.add_paragraph(
-        "A tabular WGAN-GP (Wasserstein GAN with gradient penalty) for row-level behavioral fraud "
-        "(card-testing, structuring, ATO bursts, synthetic-identity bust-out, BEC and romance-scam "
-        "proxies), using mode-specific normalization to handle the multimodal amount distributions "
-        "that cause vanilla GAN training to mode-collapse.",
-        style="List Bullet",
-    )
-    doc.add_paragraph(
-        "A graph GAN (hand-rolled graph-convolution generator and discriminator, no external "
-        "graph-ML library) for network-structured fraud — mule layering chains, collusive rings, "
-        "and coordinated fan-in mule bursts — since no single transaction in a laundering ring "
-        "looks unusual in isolation; only the topology does.",
-        style="List Bullet",
-    )
-    doc.add_paragraph(
-        "A 'Red-Team GAN' — our own modification to the GAN objective — adds a second loss term "
-        "to the generator: evading a distilled surrogate of the live defense classifier, not just "
-        "fooling the critic. This is what closes the loop (Section 4).",
-        style="List Bullet",
-    )
-    add_body(
-        doc,
-        f"Fidelity results: the tabular GAN's synthetic fraud achieves a discriminative AUC of "
-        f"{tab_fidelity['discriminative_auc']:.3f} against real rule-based fraud (0.5 = a classifier "
-        f"cannot tell real from synthetic apart) with a correlation-matrix difference of "
-        f"{tab_fidelity['correlation_diff']:.3f}. The graph GAN's synthetic mule/ring topologies "
-        f"show a degree-distribution KS statistic of {graph_fidelity['degree_ks']:.3f} against real "
-        f"topologies, with real vs. synthetic cycle rates of "
-        f"{graph_fidelity['real_cycle_rate']:.2f} vs. {graph_fidelity['synth_cycle_rate']:.2f} "
-        "(collusive rings are, by definition, cycles — this is the key structural check).",
+        "Generation runs in three layers, each addressing a different limitation of the layer "
+        "before it.",
     )
 
-    # ---------------------------------------------------------------- Section 3
-    add_heading(doc, "3. Detection and mitigation model, with efficacy results")
-    add_body(
+    h(doc, "2.1 Rule-based attack agents", level=2)
+    p(
+        doc,
+        "10 agents (7 behavioral, 3 network) inject labeled fraud incidents onto a real "
+        "transaction backbone (the PaySim mobile-money dataset), encoding each attack type's "
+        "exact transactional fingerprint: amounts and victim balances are drawn from the real "
+        "backbone's own distribution rather than fixed constants, so injected fraud is scaled and "
+        "timed against real statistics. Behavioral agents (card-testing bursts, adaptive "
+        "structuring, account-takeover velocity spikes, synthetic-identity bust-out, BEC and "
+        "romance-scam proxies, a classifier-evasion probe) each emit a self-contained sequence of "
+        "transactions for one account. Network agents (mule layering chains, collusive rings, "
+        "coordinated fan-in mule bursts) emit transactions across multiple synthetic accounts "
+        "forming a specific topology, because no single transaction in a laundering ring is "
+        "anomalous on its own — only the shape of who pays whom is.",
+    )
+
+    h(doc, "2.2 Tabular WGAN-GP", level=2)
+    p(
+        doc,
+        "A conditional generative adversarial network scales up the 7 behavioral attack types. "
+        "Continuous columns (amount, balances) are encoded with mode-specific normalization: a "
+        "Bayesian Gaussian mixture identifies each column's modes, and every value is represented "
+        "as a one-hot mode indicator plus a scalar offset within that mode, rather than a single "
+        "global mean/standard deviation. This matters because transaction amounts are multimodal "
+        "(distinct clusters per transaction type), and a single-Gaussian encoding causes a "
+        "generator to mode-collapse onto the dominant cluster. The generator and critic are "
+        "trained with the Wasserstein loss and a gradient penalty (WGAN-GP) rather than the "
+        "standard binary cross-entropy GAN loss, which is markedly less stable on this data — "
+        "the critic's gradient vanishes once it becomes confidently accurate, starving the "
+        "generator. Fidelity is measured with a discriminative score (a classifier trained to "
+        f"separate real from synthetic rows): {tab_fidelity['discriminative_auc']:.3f} AUC "
+        "(0.5 = indistinguishable), a correlation-matrix difference of "
+        f"{tab_fidelity['correlation_diff']:.3f}, and per-feature KS statistics.",
+    )
+
+    h(doc, "2.3 Graph GAN", level=2)
+    p(
+        doc,
+        "A second generative model, built from hand-written graph convolution layers (dense "
+        "adjacency operations, no external graph-learning library), targets the 3 network attack "
+        "types. The generator produces node features, an existence mask, and an edge-weight "
+        "matrix from noise and a ring-type condition, then refines the node features with one "
+        "round of message passing over its own proposed adjacency; the discriminator is a graph "
+        "classifier that pools node embeddings into a graph-level real/fake score.",
+    )
+    p(
+        doc,
+        f"Result: across a systematic sweep of training regularization, this generator converged "
+        "to a degenerate solution — either a fully connected or an empty graph — rather than "
+        "realistic mule/ring/fan-in topology, within the project's time budget "
+        f"(degree-distribution KS {graph_fidelity['degree_ks']:.2f}; synthetic cycle rate "
+        f"{graph_fidelity['synth_cycle_rate']:.2f} against a real rate of "
+        f"{graph_fidelity['real_cycle_rate']:.2f}). The discriminator trained normally and is "
+        "retained as a structural fidelity scorer. Training-data augmentation for network fraud "
+        "uses the rule-based network agents at a larger scale instead of generator samples. The "
+        "sweep and this conclusion are in scripts/experiment_graph_gan.py.",
+    )
+
+    h(doc, "2.4 Red-Team GAN", level=2)
+    p(
+        doc,
+        "A modification to the generator objective used specifically in the closed-loop step "
+        "(Section 4): the generator's loss gains a second term rewarding it for being scored as "
+        "legitimate by a live snapshot of the defense classifier, not only for fooling the "
+        "critic. Because XGBoost has no gradient with respect to its input, this term is computed "
+        "against a small differentiable surrogate network distilled to match the classifier's "
+        "output probabilities on the same transformed representation the generator produces — "
+        "the standard approach for constructing gradient-based attacks against a non-"
+        "differentiable model. Re-distilling the surrogate from the current classifier each "
+        "iteration is what makes the generator adapt to the defense's current state rather than "
+        "a fixed one.",
+    )
+
+    # ================================================================== 3
+    h(doc, "3. Detection and mitigation model, with efficacy results")
+    p(
         doc,
         "The defense is an XGBoost classifier on engineered features: balance-consistency "
-        "residuals, trailing 24-hour transaction velocity/sum per account, and per-account "
-        "recency (transactions-so-far), trained on real legitimate transactions plus rule-based "
-        "and GAN-augmented synthetic fraud, with a group-aware train/test split (whole incidents "
-        "and accounts, never individual rows, are held out) to avoid leakage.",
+        "residuals (expected vs. actual balance change per transaction), trailing 24-hour "
+        "transaction count and amount per account (both sender and receiver), and per-account "
+        "transaction count to date. It is trained on real legitimate transactions plus rule-based "
+        "and GAN-augmented synthetic fraud, with entire incidents and accounts — not individual "
+        "rows — held out for testing, so the same account's history cannot appear on both sides "
+        "of the split.",
     )
     m = metrics
-    doc.add_paragraph(
-        f"Precision: {m['precision']:.3f}  |  Recall: {m['recall']:.3f}  |  F1: {m['f1']:.3f}  |  "
-        f"ROC-AUC: {m['roc_auc']:.3f}  |  PR-AUC: {m['pr_auc']:.3f}",
-    )
-    doc.add_paragraph(
-        f"False-positive rate on legitimate transactions: {m['false_positive_rate_on_legit']:.4f} "
-        f"({m['confusion_matrix']['fp']} false positives out of {m['n_legit']} legitimate "
-        "transactions in the held-out set) — kept explicitly low per the brief's requirement.",
-    )
-    add_body(
+    p(doc, f"Precision {m['precision']:.3f}, recall {m['recall']:.3f}, F1 {m['f1']:.3f}, "
+           f"ROC-AUC {m['roc_auc']:.3f}, PR-AUC {m['pr_auc']:.3f}.")
+    p(
         doc,
-        "SHAP (TreeExplainer) provides per-prediction feature attributions in the live demo, so "
-        "any flagged transaction can be explained in terms of which engineered feature drove the "
-        "score — necessary for analyst trust and regulatory explainability in a real deployment.",
+        f"False-positive rate on legitimate transactions: {m['false_positive_rate_on_legit']:.4f} "
+        f"({m['confusion_matrix']['fp']} of {m['n_legit']} legitimate transactions in the held-out "
+        "set).",
+    )
+    p(
+        doc,
+        "SHAP (TreeExplainer) attributes each flagged transaction to the engineered features that "
+        "drove its score, exposed per-transaction in the live application.",
+    )
+    p(
+        doc,
+        "Caveat: the held-out set is drawn from the same generative process as the training set "
+        "(real legitimate transactions plus rule-based and GAN-augmented synthetic fraud). Freshly "
+        "minted synthetic accounts carry an inherently strong signal (no prior transaction "
+        "history), which partly accounts for the near-ceiling recall. The closed-loop result in "
+        "Section 4, evaluated against fraud generated specifically to evade the model, is the more "
+        "informative measure of generalization; production deployment would require validation "
+        "against live transaction data and ongoing monitoring for concept drift.",
     )
 
-    # ---------------------------------------------------------------- Section 4
-    add_heading(doc, "4. Closing the loop, and real-world feasibility")
-    add_body(
+    # ================================================================== 4
+    h(doc, "4. Real-world feasibility in live payment environments")
+    h(doc, "Closing the loop", level=2)
+    p(
         doc,
-        f"One closed-loop iteration: the defense's false negatives on the held-out set identified "
-        f"'{closed_loop['target_attack_type']}' as its weakest attack type. The Red-Team GAN was "
-        "trained against a surrogate of the live classifier, conditioned on that type, producing "
-        "a harder synthetic batch explicitly optimized to evade the current defense. On a fresh, "
-        "disjoint batch sampled from that same Red-Team GAN (fraud designed to evade the *before* "
-        "model specifically), detection rate moved from "
-        f"{closed_loop.get('holdout_detection_rate_before', float('nan')):.1%} before retraining "
-        f"to {closed_loop.get('holdout_detection_rate_after', float('nan')):.1%} after — a "
-        "concrete, measured demonstration that the attacker and defender genuinely adapt to each "
-        "other, rather than three independent pillars presented side by side. (Aggregate held-out "
-        f"test-set recall, for reference, moved from {closed_loop['metrics_before']['recall']:.3f} "
-        f"to {closed_loop['metrics_after']['recall']:.3f} — already near-ceiling before this "
-        "iteration, which is why the held-out Red-Team batch is the more informative number here.) "
-        f"False-positive rate on legitimate transactions changed from "
-        f"{closed_loop['metrics_before']['false_positive_rate_on_legit']:.4f} to "
+        f"One closed-loop iteration: false negatives on the held-out set identified "
+        f"'{closed_loop['target_attack_type']}' as the defense's weakest attack type. A Red-Team "
+        "GAN generator was trained against a surrogate of the live classifier, conditioned on "
+        "that type, and produced a batch of synthetic fraud optimized to evade the model. On a "
+        "second, disjoint batch from the same generator, detection rate moved from "
+        f"{closed_loop.get('holdout_detection_rate_before', float('nan')):.1%} to "
+        f"{closed_loop.get('holdout_detection_rate_after', float('nan')):.1%} after folding the "
+        "first batch into training and retraining. Aggregate held-out recall moved from "
+        f"{closed_loop['metrics_before']['recall']:.3f} to "
+        f"{closed_loop['metrics_after']['recall']:.3f} — already near its ceiling beforehand, "
+        "which is why the disjoint adversarial batch is the metric that demonstrates the loop "
+        "closing rather than the aggregate number. False-positive rate on legitimate transactions "
+        f"moved from {closed_loop['metrics_before']['false_positive_rate_on_legit']:.4f} to "
         f"{closed_loop['metrics_after']['false_positive_rate_on_legit']:.4f} across the same "
-        "retraining step.",
+        "retraining step. The application exposes this as a live action: mining, retraining, and "
+        "re-measurement run on demand and produce a fresh result each time, not a fixed recorded "
+        "number.",
     )
-    add_body(
+    h(doc, "Feasibility", level=2)
+    p(
         doc,
-        "Real-world feasibility: every simulated attack is grounded in its observable transactional "
-        "fingerprint rather than assuming a payments system can directly perceive a deepfake or a "
-        "cloned voice — this is deliberate, since a production fraud system genuinely can only act "
-        "on transaction-level signal. The velocity/graph features generalize to any transaction "
-        "stream with account, amount, timestamp, and counterparty fields (not PaySim-specific), and "
-        "the closed-loop retraining pattern maps directly onto a real fraud team's periodic model "
-        "refresh cycle, with the Red-Team GAN standing in for the adversarial stress-testing a bank "
-        "would otherwise have to commission manually or wait to observe in production losses.",
+        "Every simulated attack is grounded in its transactional fingerprint rather than an "
+        "assumption that a payments system can directly perceive a deepfake or a cloned voice — a "
+        "production fraud system only has transaction-level signal to act on. The engineered "
+        "features (balance-consistency residuals, trailing velocity, account recency) generalize "
+        "to any transaction stream carrying account, amount, timestamp, and counterparty fields, "
+        "not specifically to PaySim's schema. The closed-loop retraining pattern maps onto a "
+        "fraud team's periodic model refresh cycle, with the Red-Team GAN standing in for "
+        "adversarial stress-testing that would otherwise be manual or observed only after losses "
+        "occur in production. The graph-GAN result in Section 2.3 is reported as a limitation "
+        "rather than omitted: network-fraud detection in this system currently depends on "
+        "rule-based topology generation for training data, and a converged graph generator is "
+        "future work rather than a solved component.",
     )
 
     out_path = ROOT / "docs" / "WALKTHROUGH.docx"
